@@ -103,12 +103,13 @@ function rebuildBonds(curPos) {
     const len = dir.length();
     dir.normalize();
 
-    // 球棍模式：棍子两端让出原子球（球体已随间距沿键方向移动）
-    const trim = state.style === 'ballstick'
-      ? Math.min(atomRadius(ma), len * 0.45) : 0;
-    const segLen = Math.max(len - 2 * trim, 0.05);
-    const start = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5)
-      .addScaledVector(dir, -segLen / 2);
+    // 球棍模式：棍子两端分别按各自原子球的半径收口，
+    // 保证无论大小球组合都能恰好接到球面上；棍状模式下不收口
+    const cap = state.style === 'ballstick' ? 1 : 0;
+    const trimA = Math.min(atomRadius(ma), len * 0.45) * cap;
+    const trimB = Math.min(atomRadius(mb), len * 0.45) * cap;
+    const segLen = Math.max(len - trimA - trimB, 0.05);
+    const start = new THREE.Vector3().copy(p1).addScaledVector(dir, trimA);
 
     const r = STICK_R * state.stickScale * (bd.o >= 2 ? 1.25 : 1);
     const mat = new THREE.MeshPhongMaterial({

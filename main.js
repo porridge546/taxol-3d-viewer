@@ -5,7 +5,9 @@ const CPK = { H: 0xf2f2f2, C: 0x8c8c8c, N: 0x3050f8, O: 0xff2a2a };
 const CPK_CSS = { H: '#f2f2f2', C: '#8c8c8c', N: '#3050f8', O: '#ff2a2a' };
 const EL_ZH = { H: '氢', C: '碳', N: '氮', O: '氧' };
 const BOND_BASE = 0x9a9a9a;          // 棍子默认灰
-const BALL_R = 0.62;                 // 球棍模式原子球基准半径（Å）
+const BALL_R = { H: 0.27, C: 0.64, N: 0.59, O: 0.55 };
+// 球棍模式原子球基准半径（Å）：按共价半径比例 H:C:N:O ≈ 31:76:71:66，
+// 碳最大、氢最小，不同元素有明显大小差异
 const STICK_R = 0.16;                // 棍子基准半径（Å）
 
 // ---------- state ----------
@@ -79,7 +81,7 @@ controls.minDistance = maxR * 0.25;   // 允许贴近观察任意局部
 
 // ---------- 构建 / 重建 ----------
 function atomRadius(mesh) {
-  const base = state.style === 'spacefill' ? mesh.userData.vdw : BALL_R;
+  const base = state.style === 'spacefill' ? mesh.userData.vdw : BALL_R[mesh.userData.el];
   return base * state.sphereScale;
 }
 

@@ -13,7 +13,7 @@ const STICK_R = 0.16;                // 棍子基准半径（Å）
 // ---------- state ----------
 const state = {
   style: 'ballstick',                // spacefill | ballstick | sticks（默认球棍）
-  sphereScale: 1, stickScale: 1, gap: 0.15,
+  sphereScale: 1, stickScale: 1, gap: 0.15, gapH: 0,
   hiddenEls: new Set(),            // 被隐藏的元素种类，如 {'H','C'}
   selection: new Set(),              // 'a<idx>' 原子 / 'b<idx>' 键
 };
@@ -103,11 +103,11 @@ function rebuildBonds(curPos) {
     const len = dir.length();
     dir.normalize();
 
-    // 球棍模式：棍子两端分别按各自原子球的半径收口，
-    // 保证无论大小球组合都能恰好接到球面上；棍状模式下不收口
+    // 球棍模式：棍子两端插入原子球内部（深度为各自半径的 55%），
+    // 球面与棍子交界处没有缝隙；棍状模式下不收口、贯穿到原子中心
     const cap = state.style === 'ballstick' ? 1 : 0;
-    const trimA = Math.min(atomRadius(ma), len * 0.45) * cap;
-    const trimB = Math.min(atomRadius(mb), len * 0.45) * cap;
+    const trimA = Math.min(atomRadius(ma) * 0.55, len * 0.45) * cap;
+    const trimB = Math.min(atomRadius(mb) * 0.55, len * 0.45) * cap;
     const segLen = Math.max(len - trimA - trimB, 0.05);
     const start = new THREE.Vector3().copy(p1).addScaledVector(dir, trimA);
 
@@ -135,18 +135,21 @@ function rebuildBonds(curPos) {
 }
 
 function rebuild() {
-  // 间距：球棍模式下原子沿化学键方向拉开 state.gap（每端 gap），
-  // 球与球之间的距离随棍子一起变化；其他模式回到原始坐标
-  const g = state.style === 'ballstick' ? state.gap : 0;
+  // 间距：球棍模式下原子沿化学键方向拉开。
+  // 普通键每端拉开 state.gap；含氢的键额外每端拉开 state.gapH（可单独调整）
+  const base = state.style === 'ballstick' ? state.gap : 0;
+  const extraH = state.style === 'ballstick' ? state.gapH : 0;
   const disp = atomPos.map(() => new THREE.Vector3());
-  if (g > 0) {
-    for (const bd of data.bonds) {
-      const dir = new THREE.Vector3().subVectors(atomPos[bd.b], atomPos[bd.a]);
-      if (dir.lengthSq() < 1e-12) continue;
-      dir.normalize();
-      disp[bd.a].addScaledVector(dir, -g);
-      disp[bd.b].addScaledVector(dir, g);
-    }
+  for (const bd of data.bonds) {
+    const isHBond = atomMeshes[bd.a].userData.el === 'H'
+                 || atomMeshes[bd.b].userData.el === 'H';
+    const g = base + (isHBond ? extraH : 0);
+    if (g <= 0) continue;
+    const dir = new THREE.Vector3().subVectors(atomPos[bd.b], atomPos[bd.a]);
+    if (dir.lengthSq() < 1e-12) continue;
+    dir.normalize();
+    disp[bd.a].addScaledVector(dir, -g);
+    disp[bd.b].addScaledVector(dir, g);
   }
   const curPos = atomPos.map((p, i) => p.clone().add(disp[i]));
 
@@ -196,6 +199,7 @@ tabs.forEach(t => t.addEventListener('click', () => {
   document.getElementById('rowSphere').classList.toggle('disabled', state.style === 'sticks');
   document.getElementById('rowStick').classList.toggle('disabled', state.style === 'spacefill');
   document.getElementById('rowGap').classList.toggle('disabled', state.style !== 'ballstick');
+  document.getElementById('rowGapH').classList.toggle('disabled', state.style !== 'ballstick');
   rebuild();
 }));
 
@@ -211,6 +215,20 @@ function bindSlider(id, vid, fmt, apply) {
 bindSlider('sSphere', 'vSphere', v => v.toFixed(2), v => { state.sphereScale = v; });
 bindSlider('sStick', 'vStick', v => v.toFixed(1), v => { state.stickScale = v; });
 bindSlider('sGap', 'vGap', v => v.toFixed(2) + ' Å', v => { state.gap = v; });
+bindSlider('sGapH', 'vGapH', v => v.toFixed(2) + ' Å', v => { state.gapH = v; });
+
+// 模型整体朝向（对应参考图的摆放角度）：只旋转、不改结构，无需 rebuild
+function bindRotation(id, vid, fmt, apply) {
+  const el = document.getElementById(id), lbl = document.getElementById(vid);
+  el.addEventListener('input', () => {
+    apply(+el.value);
+    lbl.textContent = fmt(+el.value);
+  });
+}
+bindRotation('sRotY', 'vRotY', v => v.toFixed(0) + '°',
+  v => { modelGroup.rotation.y = THREE.MathUtils.degToRad(v); });
+bindRotation('sRotX', 'vRotX', v => v.toFixed(0) + '°',
+  v => { modelGroup.rotation.x = THREE.MathUtils.degToRad(v); });
 
 // ---------- UI：图例 / 按元素显隐 ----------
 // 图例每一项就是一个开关：点击可隐藏/显示该元素的原子球，

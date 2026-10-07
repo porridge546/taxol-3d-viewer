@@ -15,6 +15,7 @@ const state = {
   style: 'ballstick',                // spacefill | ballstick | sticks（默认球棍）
   sphereScale: 1, stickScale: 1, gap: 0.15, gapH: 0,
   hiddenEls: new Set(),            // 被隐藏的元素种类，如 {'H','C'}
+  bend: new Map(),                 // 'b<idx>' -> 弧度，选中键的键角弯折量
   selection: new Set(),              // 'a<idx>' 原子 / 'b<idx>' 键
 };
 
@@ -134,9 +135,56 @@ function rebuildBonds(curPos) {
   });
 }
 
+// 邻接表与子树（键角弯折用）
+const adj = atomPos.map(() => []);
+data.bonds.forEach((bd, k) => {
+  adj[bd.a].push([bd.b, k]);
+  adj[bd.b].push([bd.a, k]);
+});
+// 从 root 出发、不跨越键 skipK 能到达的所有原子（含 root）
+function subtree(root, skipK) {
+  const seen = new Set([root]);
+  const stack = [root];
+  while (stack.length) {
+    const u = stack.pop();
+    for (const [v, k] of adj[u]) {
+      if (k === skipK || seen.has(v)) continue;
+      seen.add(v);
+      stack.push(v);
+    }
+  }
+  return seen;
+}
+
+// 把弯折量应用到基础坐标：绕枢轴原子旋转较小一侧的子树，
+// 转轴 = 屏幕垂直方向（在模型本地坐标系中），掰动选中的键
+function applyBends(base) {
+  if (!state.bend.size) return base;
+  const pos = base.map(p => p.clone());
+  const q = new THREE.Quaternion();
+  modelGroup.getWorldQuaternion(q);
+  const axis = new THREE.Vector3();
+  camera.getWorldDirection(axis);
+  axis.applyQuaternion(q.invert()).normalize();
+  for (const [key, theta] of state.bend) {
+    if (!theta) continue;
+    const bd = data.bonds[+key.slice(1)];
+    const sideA = subtree(bd.a, +key.slice(1));
+    // 旋转较小一侧，避免大范围结构跟着动
+    const root = sideA.size <= data.atoms.length - sideA.size ? bd.a : bd.b;
+    const pivot = root === bd.a ? bd.b : bd.a;
+    for (const i of subtree(root, +key.slice(1))) {
+      pos[i].sub(pos[pivot]).applyAxisAngle(axis, theta).add(pos[pivot]);
+    }
+  }
+  return pos;
+}
+
 function rebuild() {
+  // 先应用键角弯折，再在弯折后的坐标上拉开间距
+  const basePos = applyBends(atomPos);
   // 间距：球棍模式下原子沿化学键方向拉开。
-  // 普通键每端拉开 state.gap；含氢的键额外每端拉开 state.gapH（可单独调整）
+  // 普通键每端拉开 state.gap；含氢的键额外每端拉开 state.gapH（可单独调整，可为负=调短）
   const base = state.style === 'ballstick' ? state.gap : 0;
   const extraH = state.style === 'ballstick' ? state.gapH : 0;
   const disp = atomPos.map(() => new THREE.Vector3());
@@ -144,14 +192,14 @@ function rebuild() {
     const isHBond = atomMeshes[bd.a].userData.el === 'H'
                  || atomMeshes[bd.b].userData.el === 'H';
     const g = base + (isHBond ? extraH : 0);
-    if (g <= 0) continue;
-    const dir = new THREE.Vector3().subVectors(atomPos[bd.b], atomPos[bd.a]);
+    if (g === 0) continue;
+    const dir = new THREE.Vector3().subVectors(basePos[bd.b], basePos[bd.a]);
     if (dir.lengthSq() < 1e-12) continue;
     dir.normalize();
     disp[bd.a].addScaledVector(dir, -g);
     disp[bd.b].addScaledVector(dir, g);
   }
-  const curPos = atomPos.map((p, i) => p.clone().add(disp[i]));
+  const curPos = basePos.map((p, i) => p.clone().add(disp[i]));
 
   // 原子球：位置 / 半径 / 可见性
   atomMeshes.forEach((m, i) => {
@@ -302,7 +350,30 @@ function refreshSelInfo() {
   if (nb) parts.push(`${nb} 根键`);
   selInfo.innerHTML = `已选中 <b>${n}</b> 项（${parts.join(' + ')}）`;
   pickerRow.style.display = 'flex';
+  // 只选中一根键时，显示键角调节
+  const bondKeys = [...state.selection].filter(k => k[0] === 'b');
+  if (bondKeys.length === 1 && na === 0) {
+    angleRow.style.display = 'block';
+    const deg = (state.bend.get(bondKeys[0]) || 0) * 180 / Math.PI;
+    sAngle.value = deg.toFixed(0);
+    vAngle.textContent = deg.toFixed(0) + '°';
+  } else {
+    angleRow.style.display = 'none';
+  }
 }
+
+// ---------- 键角调节（选中单根键时可用） ----------
+const angleRow = document.getElementById('angleRow');
+const sAngle = document.getElementById('sAngle');
+const vAngle = document.getElementById('vAngle');
+sAngle.addEventListener('input', () => {
+  const bondKeys = [...state.selection].filter(k => k[0] === 'b');
+  if (bondKeys.length !== 1) return;
+  const deg = +sAngle.value;
+  vAngle.textContent = deg.toFixed(0) + '°';
+  state.bend.set(bondKeys[0], THREE.MathUtils.degToRad(deg));
+  rebuild();
+});
 
 colorPicker.addEventListener('input', e => {
   for (const m of selectedMeshes()) m.material.color.set(e.target.value);

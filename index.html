@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>紫杉醇 3D 分子模型 · 交互查看器</title>
-  <link rel="stylesheet" href="./style.css?v=20261007c" />
+  <link rel="stylesheet" href="./style.css?v=20261007d" />
   <script type="importmap">
   {
     "imports": {
@@ -47,8 +47,8 @@
         <input type="range" id="sGap" min="0" max="0.8" step="0.02" value="0.15" />
       </div>
       <div class="slider-row" id="rowGapH">
-        <label>C–H 键距（单独） <span class="val" id="vGapH">0.00 Å</span></label>
-        <input type="range" id="sGapH" min="0" max="0.8" step="0.02" value="0" />
+        <label>C–H 键距（单独，可负=调短） <span class="val" id="vGapH">0.00 Å</span></label>
+        <input type="range" id="sGapH" min="-0.5" max="0.8" step="0.02" value="0" />
       </div>
 
       <h2>模型朝向</h2>
@@ -70,11 +70,17 @@
         <button id="resetSel" class="btn ghost small">恢复选中项</button>
       </div>
       <button id="resetAll" class="btn ghost" style="margin-top:12px">全部恢复默认颜色</button>
+
+      <div class="slider-row" id="angleRow" style="display:none; margin-top:12px">
+        <label>键角弯折 <span class="val" id="vAngle">0°</span></label>
+        <input type="range" id="sAngle" min="-60" max="60" step="1" value="0" />
+      </div>
+      <p class="hint">选中一根棍子后，可用「键角弯折」滑块调整该原子-原子键角；<br />选中后此滑块自动出现</p>
       <p class="hint">左键拖动旋转 · 滚轮缩放 · 右键平移<br />点击物体加入/移出选择 · 点击空白处清空选择</p>
     </aside>
 
     <footer class="panel bottom" id="stats"></footer>
   </div>
-  <script type="module" src="./main.js?v=20261007c"></script>
+  <script type="module" src="./main.js?v=20261007d"></script>
 </body>
 </html>

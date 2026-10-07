@@ -12,7 +12,7 @@ const STICK_R = 0.16;                // 棍子基准半径（Å）
 const state = {
   style: 'ballstick',                // spacefill | ballstick | sticks（默认球棍）
   sphereScale: 1, stickScale: 1, gap: 0.15,
-  showH: true,
+  hiddenEls: new Set(),            // 被隐藏的元素种类，如 {'H','C'}
   selection: new Set(),              // 'a<idx>' 原子 / 'b<idx>' 键
 };
 
@@ -93,8 +93,7 @@ function rebuildBonds(curPos) {
 
   data.bonds.forEach((bd, k) => {
     const ma = atomMeshes[bd.a], mb = atomMeshes[bd.b];
-    if (ma.userData.el === 'H' && !state.showH) return;
-    if (mb.userData.el === 'H' && !state.showH) return;
+    if (state.hiddenEls.has(ma.userData.el) || state.hiddenEls.has(mb.userData.el)) return;
     if (state.style === 'spacefill') return;   // 空间填充不画键
 
     const p1 = curPos[bd.a], p2 = curPos[bd.b];
@@ -150,8 +149,7 @@ function rebuild() {
 
   // 原子球：位置 / 半径 / 可见性
   atomMeshes.forEach((m, i) => {
-    const isH = m.userData.el === 'H';
-    m.visible = state.style !== 'sticks' && (!isH || state.showH);
+    m.visible = state.style !== 'sticks' && !state.hiddenEls.has(m.userData.el);
     m.position.copy(curPos[i]);
     m.scale.setScalar(atomRadius(m));
   });
@@ -195,7 +193,6 @@ tabs.forEach(t => t.addEventListener('click', () => {
   document.getElementById('rowSphere').classList.toggle('disabled', state.style === 'sticks');
   document.getElementById('rowStick').classList.toggle('disabled', state.style === 'spacefill');
   document.getElementById('rowGap').classList.toggle('disabled', state.style !== 'ballstick');
-  document.getElementById('hRow').style.display = state.style === 'sticks' ? 'none' : 'flex';
   rebuild();
 }));
 
@@ -212,21 +209,32 @@ bindSlider('sSphere', 'vSphere', v => v.toFixed(2), v => { state.sphereScale = v
 bindSlider('sStick', 'vStick', v => v.toFixed(1), v => { state.stickScale = v; });
 bindSlider('sGap', 'vGap', v => v.toFixed(2) + ' Å', v => { state.gap = v; });
 
-// ---------- UI：图例 / 氢开关 ----------
+// ---------- UI：图例 / 按元素显隐 ----------
+// 图例每一项就是一个开关：点击可隐藏/显示该元素的原子球，
+// 涉及该元素的化学键会同步隐藏（棍状模式下同样生效）
 const counts = {};
 data.atoms.forEach(a => { counts[a.el] = (counts[a.el] || 0) + 1; });
 const legend = document.getElementById('legend');
 for (const [el, n] of Object.entries(counts)) {
   const li = document.createElement('li');
+  li.className = 'el-toggle';
+  li.dataset.el = el;
+  li.title = '点击隐藏 / 再次点击显示';
   li.innerHTML = `<span class="dot" style="background:${CPK_CSS[el]}"></span>
     ${EL_ZH[el]} ${el}<span class="count">${n}</span>`;
+  li.addEventListener('click', () => {
+    state.hiddenEls.has(el) ? state.hiddenEls.delete(el) : state.hiddenEls.add(el);
+    refreshLegendStyles();
+    rebuild();
+  });
   legend.appendChild(li);
 }
-document.getElementById('hCount').textContent = counts.H || 0;
-document.getElementById('toggleH').addEventListener('change', e => {
-  state.showH = e.target.checked;
-  rebuild();
-});
+function refreshLegendStyles() {
+  legend.querySelectorAll('li').forEach(li => {
+    li.classList.toggle('off', state.hiddenEls.has(li.dataset.el));
+  });
+}
+refreshLegendStyles();
 
 const STYLE_DESC = {
   spacefill: '空间填充：球体半径 = 范德华半径，显示实际占据体积',

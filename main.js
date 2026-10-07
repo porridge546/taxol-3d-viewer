@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 
 const CPK = { H: 0xf2f2f2, C: 0x8c8c8c, N: 0x3050f8, O: 0xff2a2a };
 const CPK_CSS = { H: '#f2f2f2', C: '#8c8c8c', N: '#3050f8', O: '#ff2a2a' };
@@ -23,12 +23,11 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 500);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-// 360° 无死角：极角不限（可从正上方转到正下方），方位角本就无限
-controls.minPolarAngle = 0;
-controls.maxPolarAngle = Math.PI;
+// 轨迹球控制器：真正的全自由度旋转，无俯仰/方位角限制，
+// 任意朝向都可达，可连续翻滚（720° 只是起步），也不会在两极处翻转卡顿
+const controls = new TrackballControls(camera, canvas);
+controls.staticMoving = true;        // 拖拽跟手，无惯性漂移
+controls.rotateSpeed = 2.4;          // 旋转灵敏度
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 const key = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -76,7 +75,7 @@ for (const a of data.atoms) {
 const maxR = Math.max(...atomMeshes.map(m => m.position.length() + m.userData.vdw));
 camera.position.set(0, 0, maxR * 2.6);
 controls.maxDistance = maxR * 8;
-controls.minDistance = maxR * 0.6;
+controls.minDistance = maxR * 0.25;   // 允许贴近观察任意局部
 
 // ---------- 构建 / 重建 ----------
 function atomRadius(mesh) {

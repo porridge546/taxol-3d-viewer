@@ -10,7 +10,7 @@ const STICK_R = 0.16;                // 棍子基准半径（Å）
 
 // ---------- state ----------
 const state = {
-  style: 'spacefill',                // spacefill | ballstick | sticks
+  style: 'ballstick',                // spacefill | ballstick | sticks（默认球棍）
   sphereScale: 1, stickScale: 1, gap: 0.15,
   showH: true,
   selection: new Set(),              // 'a<idx>' 原子 / 'b<idx>' 键
@@ -26,6 +26,9 @@ const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 500);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
+// 360° 无死角：极角不限（可从正上方转到正下方），方位角本就无限
+controls.minPolarAngle = 0;
+controls.maxPolarAngle = Math.PI;
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 const key = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -38,7 +41,13 @@ scene.add(fill);
 const molGroup = new THREE.Group();   // 原子球
 const bondGroup = new THREE.Group();  // 棍子 + 命中代理
 const haloGroup = new THREE.Group();  // 选中高亮
-scene.add(molGroup, bondGroup, haloGroup);
+// 三个组放进同一个父组，整体设置初始朝向（参考图：长轴水平、侧链向右上）
+const modelGroup = new THREE.Group();
+modelGroup.add(molGroup, bondGroup, haloGroup);
+modelGroup.rotation.order = 'YXZ';
+modelGroup.rotation.y = THREE.MathUtils.degToRad(170);
+modelGroup.rotation.x = THREE.MathUtils.degToRad(10);
+scene.add(modelGroup);
 
 const sphereGeo = new THREE.SphereGeometry(1, 40, 28);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 20, 1);
@@ -75,7 +84,7 @@ function atomRadius(mesh) {
   return base * state.sphereScale;
 }
 
-function rebuildBonds() {
+function rebuildBonds(curPos) {
   // 清理旧棍子
   for (const c of [...bondGroup.children]) {
     bondGroup.remove(c);
@@ -89,14 +98,14 @@ function rebuildBonds() {
     if (mb.userData.el === 'H' && !state.showH) return;
     if (state.style === 'spacefill') return;   // 空间填充不画键
 
-    const p1 = atomPos[bd.a], p2 = atomPos[bd.b];
+    const p1 = curPos[bd.a], p2 = curPos[bd.b];
     const dir = new THREE.Vector3().subVectors(p2, p1);
     const len = dir.length();
     dir.normalize();
 
-    // 球棍模式：棍子两端让出原子球 + 可调间距
+    // 球棍模式：棍子两端让出原子球（球体已随间距沿键方向移动）
     const trim = state.style === 'ballstick'
-      ? Math.min(atomRadius(ma) + state.gap, len * 0.45) : 0;
+      ? Math.min(atomRadius(ma), len * 0.45) : 0;
     const segLen = Math.max(len - 2 * trim, 0.05);
     const start = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5)
       .addScaledVector(dir, -segLen / 2);
@@ -125,13 +134,29 @@ function rebuildBonds() {
 }
 
 function rebuild() {
-  // 原子球：半径 / 可见性
-  for (const m of atomMeshes) {
+  // 间距：球棍模式下原子沿化学键方向拉开 state.gap（每端 gap），
+  // 球与球之间的距离随棍子一起变化；其他模式回到原始坐标
+  const g = state.style === 'ballstick' ? state.gap : 0;
+  const disp = atomPos.map(() => new THREE.Vector3());
+  if (g > 0) {
+    for (const bd of data.bonds) {
+      const dir = new THREE.Vector3().subVectors(atomPos[bd.b], atomPos[bd.a]);
+      if (dir.lengthSq() < 1e-12) continue;
+      dir.normalize();
+      disp[bd.a].addScaledVector(dir, -g);
+      disp[bd.b].addScaledVector(dir, g);
+    }
+  }
+  const curPos = atomPos.map((p, i) => p.clone().add(disp[i]));
+
+  // 原子球：位置 / 半径 / 可见性
+  atomMeshes.forEach((m, i) => {
     const isH = m.userData.el === 'H';
     m.visible = state.style !== 'sticks' && (!isH || state.showH);
+    m.position.copy(curPos[i]);
     m.scale.setScalar(atomRadius(m));
-  }
-  rebuildBonds();
+  });
+  rebuildBonds(curPos);
   refreshHighlight();
   refreshSelInfo();
 }

@@ -278,6 +278,29 @@ bindRotation('sRotY', 'vRotY', v => v.toFixed(0) + '°',
 bindRotation('sRotX', 'vRotX', v => v.toFixed(0) + '°',
   v => { modelGroup.rotation.x = THREE.MathUtils.degToRad(v); });
 
+// 一键恢复打开页面时的初始状态（含视角、键角、间距、显隐、颜色、选择）
+document.getElementById('resetView').addEventListener('click', () => {
+  state.sphereScale = 1; state.stickScale = 1;
+  state.gap = 0.15; state.gapH = 0;
+  state.bend.clear();
+  state.selection.clear();
+  state.hiddenEls.clear();
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    el.value = v;
+    el.dispatchEvent(new Event('input'));
+  };
+  set('sSphere', 1); set('sStick', 1);
+  set('sGap', 0.15); set('sGapH', 0);
+  set('sRotY', 170); set('sRotX', 10);
+  refreshLegendStyles();
+  for (const m of atomMeshes) m.material.color.set(m.userData.base);
+  for (const c of bondGroup.children) {
+    if (!c.userData.isProxy) c.material.color.set(BOND_BASE);
+  }
+  rebuild();
+});
+
 // ---------- UI：图例 / 按元素显隐 ----------
 // 图例每一项就是一个开关：点击可隐藏/显示该元素的原子球，
 // 涉及该元素的化学键会同步隐藏（棍状模式下同样生效）
